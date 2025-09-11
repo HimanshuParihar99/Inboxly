@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import { useState } from 'react';
 import Link from 'next/link';
@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -14,8 +15,19 @@ export default function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setIsLoading(true);
 
+    // Basic client-side validation
+    if (!email || !password) {
+      setError('Please enter both email and password.');
+      return;
+    }
+    // Simple email format check
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+
+    setIsLoading(true);
     try {
       const response = await fetch('http://localhost:3001/auth/login', {
         method: 'POST',
@@ -25,10 +37,17 @@ export default function Login() {
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await response.json();
+      let data = null;
+      try {
+        data = await response.json();
+      } catch {
+        setError('Server error: Invalid response.');
+        return;
+      }
 
       if (!response.ok) {
-        throw new Error(data.message || 'Login failed');
+        setError(data?.message || 'Invalid email or password.');
+        return;
       }
 
       // Store the token in localStorage
@@ -37,26 +56,24 @@ export default function Login() {
 
       // Redirect to dashboard
       router.push('/dashboard');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError('Network error. Please try again later.');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">Sign in to your account</h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
+    <section className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-indigo-50 to-purple-100 dark:from-zinc-900 dark:to-indigo-950 px-2 sm:px-4 md:px-8 py-8">
+      <div className="w-full max-w-sm bg-white dark:bg-zinc-900 p-3 sm:p-6 md:p-8 rounded-lg sm:rounded-2xl shadow-md sm:shadow-xl animate-fade-in-up border border-gray-100 dark:border-zinc-800">
+        <div className="mb-6">
+          <h2 className="text-center text-3xl font-extrabold bg-gradient-to-r from-blue-600 via-fuchsia-500 to-pink-500 bg-clip-text text-transparent">Sign in to your account</h2>
+          <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-300">
             Or{' '}
-            <Link href="/register" className="font-medium text-blue-600 hover:text-blue-500">
-              create a new account
-            </Link>
+            <Link href="/register" className="font-medium text-blue-600 hover:text-blue-500 transition-colors">create a new account</Link>
           </p>
         </div>
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+        <form className="flex flex-col gap-y-4" onSubmit={handleSubmit}>
           {error && (
             <div className="bg-red-50 border-l-4 border-red-500 p-4">
               <p className="text-red-700">{error}</p>
@@ -79,14 +96,14 @@ export default function Login() {
                 onChange={(e) => setEmail(e.target.value)}
               />
             </div>
-            <div>
+            <div className="relative">
               <label htmlFor="password" className="sr-only">
                 Password
               </label>
               <input
                 id="password"
                 name="password"
-                type="password"
+                type={showPassword ? "text" : "password"}
                 autoComplete="current-password"
                 required
                 className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
@@ -94,6 +111,14 @@ export default function Login() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
+              <button
+                type="button"
+                tabIndex={-1}
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-blue-600 hover:underline focus:outline-none"
+              >
+                {showPassword ? 'Hide' : 'Show'}
+              </button>
             </div>
           </div>
 
@@ -128,6 +153,6 @@ export default function Login() {
           </div>
         </form>
       </div>
-    </div>
+    </section>
   );
 }

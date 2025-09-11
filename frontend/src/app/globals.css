@@ -50,15 +50,7 @@ footer {
   box-shadow: 0 2px 16px 0 rgba(0, 0, 0, 0.04);
 }
 
-/* Glassmorphism utility */
-.glass {
-  background: rgba(255, 255, 255, 0.7);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
-  border-radius: 1.5rem;
-  box-shadow: 0 4px 32px 0 rgba(80, 80, 180, 0.08);
-  border: 1px solid rgba(200, 200, 255, 0.18);
-}
+
 
 /* Fade-in up animation */
 .animate-fade-in-up {
