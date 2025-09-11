@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: inboxly-backend
+    env: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: MONGODB_URI
+        value: # your MongoDB connection string here
+      - key: JWT_SECRET
+        value: # your JWT secret here
+      # Add other environment variables as needed
+    autoDeploy: true
