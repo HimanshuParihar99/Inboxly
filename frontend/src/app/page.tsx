@@ -3,77 +3,48 @@ import Image from 'next/image';
 
 export default function Home() {
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Header */}
-      <header className="bg-white shadow-sm py-4">
-        <div className="container mx-auto px-4 flex justify-between items-center">
-          <div className="flex items-center space-x-2">
-            <Image 
-              src="/vercel.svg" 
-              alt="Inboxly Logo" 
-              width={30} 
-              height={30} 
-              className="dark:invert"
-            />
-            <span className="text-xl font-bold">Inboxly</span>
-          </div>
-          <div className="flex space-x-4">
-            <Link 
-              href="/login" 
-              className="px-4 py-2 rounded-md hover:bg-gray-100 transition-colors"
-            >
-              Login
-            </Link>
-            <Link 
-              href="/register" 
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-            >
-              Register
-            </Link>
-          </div>
-        </div>
-      </header>
+    <section className="relative w-full flex flex-col items-center justify-center min-h-[80vh] py-16 px-4 overflow-hidden">
+      {/* Animated Gradient Background */}
+      <div className="absolute inset-0 -z-10 animate-gradient bg-gradient-to-tr from-blue-200 via-fuchsia-100 to-pink-200 dark:from-indigo-900 dark:via-fuchsia-900 dark:to-pink-900 opacity-80 blur-2xl" />
 
-      {/* Hero Section */}
-      <main className="flex-grow flex items-center justify-center p-8">
-        <div className="max-w-4xl mx-auto text-center">
-          <h1 className="text-5xl font-bold mb-6">Understand Your Email Ecosystem</h1>
-          <p className="text-xl mb-8 text-gray-600">
-            Inboxly analyzes your email communications to provide insights on sender domains, 
-            security practices, and communication patterns.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link 
-              href="/register" 
-              className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-lg font-medium"
-            >
-              Get Started
-            </Link>
-            <Link 
-              href="/features" 
-              className="px-6 py-3 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors text-lg font-medium"
-            >
-              Learn More
-            </Link>
-          </div>
+      {/* Hero Content */}
+      <div className="max-w-3xl mx-auto text-center">
+        <div className="flex flex-col items-center mb-6">
+          <Image src="/vercel.svg" alt="Inboxly Logo" width={56} height={56} className="mb-2 drop-shadow-lg dark:invert" />
+          <h1 className="text-5xl sm:text-6xl font-extrabold tracking-tight bg-gradient-to-r from-blue-600 via-fuchsia-500 to-pink-500 bg-clip-text text-transparent animate-fade-in-up mb-4">
+            Understand Your Email Ecosystem
+          </h1>
         </div>
-      </main>
+        <p className="text-xl sm:text-2xl text-gray-700 dark:text-gray-300 mb-10 animate-fade-in-up delay-100">
+          Inboxly analyzes your email communications to provide insights on sender domains, security practices, and communication patterns.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-4 justify-center animate-fade-in-up delay-200">
+          <Link
+            href="/register"
+            className="px-8 py-3 bg-gradient-to-r from-blue-600 to-fuchsia-500 text-white rounded-lg shadow-lg hover:scale-105 hover:shadow-xl transition-all duration-200 text-lg font-semibold btn"
+          >
+            Get Started
+          </Link>
+          <Link
+            href="/features"
+            className="px-8 py-3 bg-white/80 dark:bg-zinc-800/80 text-blue-700 dark:text-fuchsia-300 rounded-lg shadow hover:bg-blue-50 dark:hover:bg-zinc-700 transition-all duration-200 text-lg font-semibold btn"
+          >
+            Learn More
+          </Link>
+        </div>
+      </div>
 
-      {/* Footer */}
-      <footer className="bg-gray-100 py-8">
-        <div className="container mx-auto px-4">
-          <div className="flex flex-col md:flex-row justify-between items-center">
-            <div className="mb-4 md:mb-0">
-              <p className="text-gray-600">© 2025 Inboxly. All rights reserved.</p>
-            </div>
-            <div className="flex space-x-4">
-              <Link href="/privacy" className="text-gray-600 hover:text-gray-900">Privacy Policy</Link>
-              <Link href="/terms" className="text-gray-600 hover:text-gray-900">Terms of Service</Link>
-              <Link href="/contact" className="text-gray-600 hover:text-gray-900">Contact</Link>
-            </div>
-          </div>
-        </div>
-      </footer>
-    </div>
+      {/* Decorative SVG or shapes */}
+      <svg className="absolute left-0 bottom-0 w-64 h-64 opacity-30 -z-10" viewBox="0 0 400 400" fill="none">
+        <circle cx="200" cy="200" r="200" fill="url(#paint0_radial)" />
+        <defs>
+          <radialGradient id="paint0_radial" cx="0" cy="0" r="1" gradientTransform="translate(200 200) scale(200)" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#818cf8" />
+            <stop offset="1" stopColor="#f472b6" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+      </svg>
+    </section>
   );
-}
+
+

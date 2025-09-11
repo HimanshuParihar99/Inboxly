@@ -1,16 +1,9 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import '@fontsource/inter/variable.css';
+import '@fontsource/raleway/variable.css';
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "Create Next App",
@@ -24,10 +17,27 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
+      <body className="font-inter antialiased bg-gradient-to-br from-indigo-50 to-purple-100 dark:from-zinc-900 dark:to-indigo-950 min-h-screen flex flex-col">
+        <header className="w-full py-4 px-0 shadow-md sticky top-0 z-30">
+          <div className="container mx-auto flex items-center justify-between">
+            <span className="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-blue-600 via-fuchsia-500 to-pink-500 bg-clip-text text-transparent">Inboxly</span>
+            <nav className="space-x-6">
+              <a href="/" className="hover:text-blue-600 font-medium transition-colors">Home</a>
+              <a href="/features" className="hover:text-blue-600 font-medium transition-colors">Features</a>
+              <a href="/dashboard" className="hover:text-blue-600 font-medium transition-colors">Dashboard</a>
+              <a href="/login" className="hover:bg-blue-600 hover:text-white px-4 py-2 rounded-md border border-blue-600 text-blue-600 font-semibold transition-colors">Login</a>
+              <a href="/register" className="bg-blue-600 text-white px-4 py-2 rounded-md font-semibold hover:bg-blue-700 transition-colors">Register</a>
+            </nav>
+          </div>
+        </header>
+        <main className="flex-grow flex flex-col justify-center items-center w-full">
+          {children}
+        </main>
+        <footer className="w-full py-6 mt-12 bg-white/80 dark:bg-zinc-900/80 text-center text-gray-500 text-sm border-t border-gray-200 dark:border-zinc-800">
+          <span>
+            &copy; {new Date().getFullYear()} Inboxly. Crafted with <span className="text-pink-500">♥</span> by Himanshu Parihar.
+          </span>
+        </footer>
       </body>
     </html>
   );
