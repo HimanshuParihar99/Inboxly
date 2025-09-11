@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import GoogleSignInButton from '../GoogleSignInButton';
 
 export default function Register() {
   const [name, setName] = useState('');
@@ -84,6 +85,12 @@ export default function Register() {
               sign in to your existing account
             </Link>
           </p>
+        </div>
+        <GoogleSignInButton text="Sign up with Google" />
+        <div className="flex items-center my-2">
+          <div className="flex-grow h-px bg-gray-200" />
+          <span className="mx-2 text-gray-400 text-xs">or</span>
+          <div className="flex-grow h-px bg-gray-200" />
         </div>
         <form className="mt-4 flex flex-col gap-y-4" onSubmit={handleSubmit}>
           {error && (

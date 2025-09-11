@@ -1,4 +1,4 @@
-
+import { SpeedInsights } from "@vercel/speed-insights/next"
 import type { Metadata } from "next";
 import '@fontsource/inter';
 import '@fontsource/raleway';
@@ -16,7 +16,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
+    
     <html lang="en">
+      <SpeedInsights/>
       <body className="font-inter antialiased bg-gradient-to-br from-indigo-50 to-purple-100 dark:from-zinc-900 dark:to-indigo-950 min-h-screen flex flex-col">
         <header className="w-full py-3 px-0 sticky top-0 z-30 bg-white/70 dark:bg-zinc-900/70 backdrop-blur-md shadow-lg rounded-b-2xl border-b border-gray-100 dark:border-zinc-800">
           <div className="container mx-auto flex items-center justify-between gap-4 px-4 sm:px-8">
