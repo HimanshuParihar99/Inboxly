@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { signOut } from "next-auth/react";
 
 interface User {
   name: string;
@@ -34,8 +35,10 @@ export default function Dashboard() {
         const sessionData = await sessionRes.json();
         setUser(sessionData?.user ?? null);
 
-        // 2. Fetch analytics
-        const analyticsRes = await fetch("http://localhost:3001/api/analytics");
+        // 2. Fetch analytics (from external API via env var)
+        const analyticsRes = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/api/analytics`
+        );
         if (!analyticsRes.ok) throw new Error("Failed to fetch analytics");
         const analyticsData = await analyticsRes.json();
         setAnalytics(analyticsData);
@@ -65,11 +68,7 @@ export default function Dashboard() {
             Dashboard
           </h1>
           <button
-            onClick={() => {
-              fetch("/api/auth/signout", { method: "POST" }).then(() =>
-                window.location.reload()
-              );
-            }}
+            onClick={() => signOut({ callbackUrl: "/login" })}
             className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors font-semibold shadow"
           >
             Logout
