@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { signIn } from 'next-auth/react';
 import GoogleSignInButton from '../GoogleSignInButton';
 
 export default function Login() {
@@ -11,6 +12,10 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [server, setServer] = useState('');
+  const [port, setPort] = useState('993');
+  const [authMethod, setAuthMethod] = useState('PLAIN');
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -28,37 +33,40 @@ export default function Login() {
       return;
     }
 
+    // If advanced options are shown, validate server and port
+    if (showAdvanced) {
+      if (!server) {
+        setError('Please enter the server address.');
+        return;
+      }
+      if (!port || isNaN(Number(port))) {
+        setError('Please enter a valid port number.');
+        return;
+      }
+    }
+
     setIsLoading(true);
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
+      // Use NextAuth for authentication
+      const result = await signIn('credentials', {
+        redirect: false,
+        email,
+        password,
+        server: showAdvanced ? server : undefined,
+        port: showAdvanced ? port : undefined,
+        authMethod: showAdvanced ? authMethod : undefined,
       });
 
-      let data = null;
-      try {
-        data = await response.json();
-      } catch {
-        setError('Server error: Invalid response.');
+      if (result?.error) {
+        setError(result.error || 'Authentication failed');
         return;
       }
 
-      if (!response.ok) {
-        setError(data?.message || 'Invalid email or password.');
-        return;
-      }
-
-      // Store the token in localStorage
-      localStorage.setItem('token', data.access_token);
-      localStorage.setItem('user', JSON.stringify(data.user));
-
-      // Redirect to dashboard
+      // Redirect to dashboard on success
       router.push('/dashboard');
     } catch (err) {
       setError('Network error. Please try again later.');
+      console.error('Login error:', err);
     } finally {
       setIsLoading(false);
     }
@@ -113,7 +121,7 @@ export default function Login() {
                 type={showPassword ? "text" : "password"}
                 autoComplete="current-password"
                 required
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -127,6 +135,74 @@ export default function Login() {
                 {showPassword ? 'Hide' : 'Show'}
               </button>
             </div>
+            
+            {/* Advanced options toggle */}
+            <div className="pt-4">
+              <button 
+                type="button"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="text-sm text-blue-600 hover:text-blue-500 focus:outline-none flex items-center"
+              >
+                <svg 
+                  className={`w-4 h-4 mr-1 transition-transform ${showAdvanced ? 'rotate-90' : ''}`} 
+                  fill="currentColor" 
+                  viewBox="0 0 20 20"
+                >
+                  <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                </svg>
+                {showAdvanced ? 'Hide advanced options' : 'Show advanced options (IMAP server)'}
+              </button>
+            </div>
+            
+            {/* Advanced options */}
+            {showAdvanced && (
+              <div className="mt-4 space-y-4 border border-gray-200 rounded-md p-4 bg-gray-50">
+                <div>
+                  <label htmlFor="server" className="block text-sm font-medium text-gray-700 mb-1">
+                    IMAP Server
+                  </label>
+                  <input
+                    id="server"
+                    name="server"
+                    type="text"
+                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    placeholder="imap.example.com"
+                    value={server}
+                    onChange={(e) => setServer(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="port" className="block text-sm font-medium text-gray-700 mb-1">
+                    Port
+                  </label>
+                  <input
+                    id="port"
+                    name="port"
+                    type="text"
+                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    placeholder="993"
+                    value={port}
+                    onChange={(e) => setPort(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="authMethod" className="block text-sm font-medium text-gray-700 mb-1">
+                    Authentication Method
+                  </label>
+                  <select
+                    id="authMethod"
+                    name="authMethod"
+                    className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
+                    value={authMethod}
+                    onChange={(e) => setAuthMethod(e.target.value)}
+                  >
+                    <option value="PLAIN">PLAIN</option>
+                    <option value="LOGIN">LOGIN</option>
+                    <option value="OAUTH2">OAuth2</option>
+                  </select>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-between">

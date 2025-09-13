@@ -9,8 +9,9 @@ export type UserDocument = User & Document;
     transform: (doc, ret: any) => {
       // Use object destructuring instead of delete operator
       // Use type assertion to handle the password property
-      const { password, ...userWithoutPassword } = ret as { password: string; [key: string]: any };
-      return userWithoutPassword;
+      const { password, accessToken, refreshToken, ...userWithoutSensitiveInfo } = 
+        ret as { password?: string; accessToken?: string; refreshToken?: string; [key: string]: any };
+      return userWithoutSensitiveInfo;
     },
   },
 })
@@ -21,8 +22,23 @@ export class User {
   @Prop({ required: true, unique: true })
   email: string;
 
-  @Prop({ required: true })
-  password: string;
+  @Prop({ required: false })
+  password?: string;
+  
+  @Prop({ required: false })
+  accessToken?: string;
+  
+  @Prop({ required: false })
+  refreshToken?: string;
+  
+  @Prop({ required: false })
+  provider?: string;
+  
+  @Prop({ required: false })
+  providerId?: string;
+  
+  @Prop({ required: false, default: false })
+  isOAuthUser: boolean;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

@@ -1,21 +1,16 @@
 "use client";
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { useSession, signOut } from 'next-auth/react';
 
 export default function Navbar() {
-    const [isLoggedIn, setIsLoggedIn] = useState(false);
+    const { data: session, status } = useSession();
+    const isLoggedIn = status === 'authenticated';
     const [menuOpen, setMenuOpen] = useState(false);
 
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            setIsLoggedIn(!!localStorage.getItem('token'));
-        }
-    }, []);
-
-    const handleLogout = () => {
-        localStorage.removeItem('token');
-        setIsLoggedIn(false);
-        window.location.reload();
+    const handleLogout = async () => {
+        await signOut({ redirect: false });
+        window.location.href = '/';
     };
 
     // Logo (Inboxly gradient text)

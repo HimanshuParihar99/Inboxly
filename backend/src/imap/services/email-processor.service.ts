@@ -4,6 +4,9 @@ import * as dns from 'dns';
 import * as net from 'net';
 import * as tls from 'tls';
 import { promisify } from 'util';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { EmailIndex } from '../schemas/email-index.schema';
 
 /**
  * Service for processing and analyzing emails
@@ -17,12 +20,169 @@ export class EmailProcessorService {
   private readonly dnsResolveMx = promisify(dns.resolveMx);
   private readonly dnsTxt = promisify(dns.resolveTxt);
   
+  constructor(
+    @InjectModel(EmailIndex.name)
+    private readonly emailIndexModel: Model<EmailIndex>,
+    @InjectModel('EmailAnalytics')
+    private readonly emailAnalyticsModel: Model<any>,
+  ) {}
+  
+  /**
+   * Index an email for full-text search
+   * @param message Email message
+   * @param userId User ID
+   * @param connectionId Connection ID
+   * @param folderPath Folder path
+   */
+  private async indexEmailForSearch(
+    message: EmailMessage,
+    userId: string,
+    connectionId?: string,
+    folderPath?: string,
+  ): Promise<void> {
+    try {
+      // Check if email is already indexed
+      const existingIndex = await this.emailIndexModel.findOne({
+        messageId: message.messageId,
+        userId,
+      }).exec();
+      
+      if (existingIndex) {
+        this.logger.debug(`Email ${message.messageId} already indexed`);
+        return;
+      }
+      
+      // Extract recipients
+      const recipients = message.to?.map(to => to.address) || [];
+      const cc = message.cc?.map(cc => cc.address) || [];
+      const bcc = message.bcc?.map(bcc => bcc.address) || [];
+      
+      // Extract attachments
+      const attachments = message.attachments?.map(attachment => attachment.filename) || [];
+      
+      // Create email index
+      const emailIndex = new this.emailIndexModel({
+        messageId: message.messageId,
+        subject: message.subject || '',
+        sender: message.from?.[0]?.address || '',
+        senderDomain: this.extractDomain(message.from?.[0]?.address || ''),
+        recipients,
+        cc,
+        bcc,
+        textContent: message.text || '',
+        htmlContent: message.html || '',
+        attachments,
+        date: message.date || new Date(),
+        folderPath,
+        userId,
+        connectionId,
+        tags: [],
+      });
+      
+      await emailIndex.save();
+      this.logger.debug(`Indexed email: ${message.subject}`);
+    } catch (error) {
+      this.logger.error(`Error indexing email: ${error.message}`, error.stack);
+      // Don't throw error to prevent blocking the main process
+    }
+  }
+  
+  /**
+   * Search emails using full-text search
+   * @param userId User ID
+   * @param query Search query
+   * @param options Search options
+   * @returns Search results
+   */
+  async searchEmails(
+    userId: string,
+    query: string,
+    options?: {
+      limit?: number;
+      skip?: number;
+      folderPath?: string;
+      startDate?: Date;
+      endDate?: Date;
+      sender?: string;
+      hasAttachments?: boolean;
+      tags?: string[];
+    },
+  ): Promise<{ results: EmailIndex[]; total: number }> {
+    try {
+      const limit = options?.limit || 20;
+      const skip = options?.skip || 0;
+      
+      // Build search filter
+      const filter: any = { userId };
+      
+      // Add text search if query is provided
+      if (query && query.trim()) {
+        filter.$text = { $search: query };
+      }
+      
+      // Add folder filter if provided
+      if (options?.folderPath) {
+        filter.folderPath = options.folderPath;
+      }
+      
+      // Add date range filter if provided
+      if (options?.startDate || options?.endDate) {
+        filter.date = {};
+        if (options?.startDate) {
+          filter.date.$gte = options.startDate;
+        }
+        if (options?.endDate) {
+          filter.date.$lte = options.endDate;
+        }
+      }
+      
+      // Add sender filter if provided
+      if (options?.sender) {
+        filter.sender = { $regex: options.sender, $options: 'i' };
+      }
+      
+      // Add attachments filter if provided
+      if (options?.hasAttachments === true) {
+        filter.attachments = { $exists: true, $ne: [] };
+      }
+      
+      // Add tags filter if provided
+      if (options?.tags && options.tags.length > 0) {
+        filter.tags = { $all: options.tags };
+      }
+      
+      // Execute search query
+      const [results, total] = await Promise.all([
+        this.emailIndexModel
+          .find(filter)
+          .sort(query && query.trim() ? { score: { $meta: 'textScore' } } : { date: -1 })
+          .skip(skip)
+          .limit(limit)
+          .exec(),
+        this.emailIndexModel.countDocuments(filter).exec(),
+      ]);
+      
+      return { results, total };
+    } catch (error) {
+      this.logger.error(`Error searching emails: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+  
   /**
    * Process an email message and generate analytics
    * @param message Email message
+   * @param userId User ID
+   * @param connectionId Connection ID
+   * @param folderPath Folder path
    * @returns Email analytics
    */
-  async processEmail(message: EmailMessage): Promise<EmailAnalytics> {
+  async processEmail(
+    message: EmailMessage,
+    userId?: string,
+    connectionId?: string,
+    folderPath?: string,
+  ): Promise<EmailAnalytics> {
     try {
       // Extract sender information
       const sender = message.from[0]?.address || '';
@@ -40,7 +200,14 @@ export class EmailProcessorService {
       // Check if the sending mail server supports TLS
       const { tlsSupport, validCertificate } = await this.checkTlsSupport(senderDomain);
       
-      return {
+      // Index the email for full-text search
+      if (userId) {
+        await this.indexEmailForSearch(message, userId, connectionId, folderPath);
+      }
+      
+      // Create analytics record
+      const analytics = {
+        messageId: message.messageId,
         sender,
         senderDomain,
         esp,
@@ -48,9 +215,18 @@ export class EmailProcessorService {
         openRelay,
         tlsSupport,
         validCertificate,
+        userId,
+        connectionId,
       };
+      
+      // Save analytics to database if userId is provided
+      if (userId) {
+        await this.emailAnalyticsModel.create(analytics);
+      }
+      
+      return analytics as EmailAnalytics;
     } catch (error) {
-      this.logger.error(`Error processing email: ${error.message}`);
+      this.logger.error(`Error processing email: ${error.message}`, error.stack);
       
       // Return partial analytics if an error occurs
       return {

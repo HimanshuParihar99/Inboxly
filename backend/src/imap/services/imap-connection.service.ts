@@ -25,9 +25,15 @@ export class ImapConnectionService implements OnModuleInit, OnModuleDestroy {
   private readonly eventEmitter: EventEmitter = new EventEmitter();
 
   // Maximum number of connections to maintain in the pool
-  private readonly MAX_CONNECTIONS = 10;
+  private readonly MAX_CONNECTIONS = 20; // Increased pool size
   // Timeout in milliseconds for inactive connections
   private readonly CONNECTION_TIMEOUT = 300000; // 5 minutes
+  // Maximum number of reconnection attempts
+  private readonly MAX_RECONNECT_ATTEMPTS = 5;
+  // Reconnection delay in milliseconds (starting value)
+  private readonly RECONNECT_DELAY = 2000;
+  // Connection priority queue for managing connection allocation
+  private connectionPriorityQueue: string[] = [];
 
   constructor() {
     // Increase the maximum number of listeners to avoid memory leak warnings
@@ -37,6 +43,9 @@ export class ImapConnectionService implements OnModuleInit, OnModuleDestroy {
   onModuleInit() {
     // Start the connection cleanup interval
     setInterval(() => this.cleanupInactiveConnections(), 60000); // Check every minute
+    
+    // Start the connection health check interval
+    setInterval(() => this.checkConnectionHealth(), 30000); // Check every 30 seconds
   }
 
   onModuleDestroy() {
@@ -216,13 +225,13 @@ export class ImapConnectionService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Connect to the IMAP server with retry logic
+   * Connect to the IMAP server with enhanced retry logic
    * @param connectionId Connection ID
    * @param maxRetries Maximum number of retry attempts
    */
   private async connectWithRetry(
     connectionId: string,
-    maxRetries: number,
+    maxRetries: number = this.MAX_RECONNECT_ATTEMPTS,
   ): Promise<void> {
     const connection = this.connections.get(connectionId);
     if (!connection) {
@@ -234,47 +243,84 @@ export class ImapConnectionService implements OnModuleInit, OnModuleDestroy {
     return new Promise<void>((resolve, reject) => {
       const attemptConnect = () => {
         try {
+          // Update connection status to connecting
+          this.updateConnectionStatus(connectionId, {
+            ...this.connectionStatus.get(connectionId),
+            state: 'connecting',
+            lastActivity: new Date(),
+          });
+          
           connection.connect();
 
           // Set up a promise that resolves when the connection is ready
           const readyPromise = new Promise<void>((readyResolve) => {
-            this.eventEmitter.once(`connection:ready:${connectionId}`, () => {
+            const readyHandler = () => {
+              this.logger.log(`Connection ${connectionId} established successfully`);
               readyResolve();
-            });
+            };
+            
+            // Use once to ensure the handler is removed after it's called
+            connection.once('ready', readyHandler);
+            this.eventEmitter.once(`connection:ready:${connectionId}`, readyHandler);
           });
 
           // Set up a promise that rejects when there's an error
           const errorPromise = new Promise<void>((_, errorReject) => {
-            this.eventEmitter.once(
-              `connection:error:${connectionId}`,
-              (error) => {
-                errorReject(error);
-              },
-            );
+            const errorHandler = (error) => {
+              this.logger.error(`Connection ${connectionId} error: ${error.message}`);
+              errorReject(error);
+            };
+            
+            connection.once('error', errorHandler);
+            this.eventEmitter.once(`connection:error:${connectionId}`, errorHandler);
           });
 
           // Race between ready and error events
           Promise.race([readyPromise, errorPromise])
-            .then(() => resolve())
+            .then(() => {
+              // Add to priority queue when connected successfully
+              if (!this.connectionPriorityQueue.includes(connectionId)) {
+                this.connectionPriorityQueue.push(connectionId);
+              }
+              resolve();
+            })
             .catch((error) => {
               if (retries < maxRetries) {
                 retries++;
+                const backoffDelay = this.RECONNECT_DELAY * Math.pow(1.5, retries - 1); // Exponential backoff
                 this.logger.log(
-                  `Retrying connection ${connectionId}, attempt ${retries}`,
+                  `Retrying connection ${connectionId}, attempt ${retries} in ${backoffDelay}ms`,
                 );
-                setTimeout(attemptConnect, 2000 * retries); // Exponential backoff
+                setTimeout(attemptConnect, backoffDelay);
               } else {
+                this.logger.error(`Failed to connect after ${maxRetries} attempts: ${error.message}`);
+                // Update connection status to error
+                this.updateConnectionStatus(connectionId, {
+                  ...this.connectionStatus.get(connectionId),
+                  state: 'error',
+                  error,
+                  lastActivity: new Date(),
+                });
                 reject(error);
               }
             });
         } catch (error) {
           if (retries < maxRetries) {
             retries++;
+            const backoffDelay = this.RECONNECT_DELAY * Math.pow(1.5, retries - 1); // Exponential backoff
             this.logger.log(
-              `Retrying connection ${connectionId}, attempt ${retries}`,
+              `Retrying connection ${connectionId}, attempt ${retries} in ${backoffDelay}ms`,
             );
-            setTimeout(attemptConnect, 2000 * retries); // Exponential backoff
+            setTimeout(attemptConnect, backoffDelay);
           } else {
+            this.logger.error(`Failed to connect after ${maxRetries} attempts: ${error.message}`);
+            // Update connection status to error
+            this.updateConnectionStatus(connectionId, {
+              ...this.connectionStatus.get(connectionId),
+              state: 'error',
+              error,
+              lastActivity: new Date(),
+            });
             reject(error);
           }
         }
@@ -285,14 +331,54 @@ export class ImapConnectionService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Get an existing IMAP connection
+   * Check the health of all connections and attempt to reconnect if needed
+   */
+  private async checkConnectionHealth(): Promise<void> {
+    for (const [connectionId, status] of this.connectionStatus.entries()) {
+      // Skip connections that are already in error or connecting state
+      if (status.state === 'error' || status.state === 'connecting') {
+        continue;
+      }
+      
+      const connection = this.connections.get(connectionId);
+      if (!connection) {
+        continue;
+      }
+      
+      // Check if connection is still alive
+      if (!connection.state || connection.state === 'disconnected') {
+        this.logger.log(`Connection ${connectionId} is disconnected, attempting to reconnect`);
+        try {
+          // Attempt to reconnect
+          await this.connectWithRetry(connectionId);
+        } catch (error) {
+          this.logger.error(`Failed to reconnect ${connectionId}: ${error.message}`);
+        }
+      }
+    }
+  }
+  
+  /**
+   * Get an existing IMAP connection with automatic reconnection if needed
    * @param connectionId Connection ID
    * @returns IMAP connection
    */
-  getConnection(connectionId: string): IMAP {
+  async getConnection(connectionId: string): Promise<IMAP> {
     const connection = this.connections.get(connectionId);
     if (!connection) {
       throw new Error(`Connection ${connectionId} not found`);
+    }
+
+    // Check if connection is still alive
+    if (!connection.state || connection.state === 'disconnected') {
+      this.logger.log(`Connection ${connectionId} is disconnected, attempting to reconnect`);
+      try {
+        // Attempt to reconnect
+        await this.connectWithRetry(connectionId, 3);
+      } catch (error) {
+        this.logger.error(`Failed to reconnect ${connectionId}: ${error.message}`);
+        throw new Error(`Failed to reconnect: ${error.message}`);
+      }
     }
 
     // Update last activity timestamp
@@ -345,6 +431,12 @@ export class ImapConnectionService implements OnModuleInit, OnModuleDestroy {
     // Close the oldest connection if found
     if (oldestId) {
       this.closeConnection(oldestId);
+      
+      // Remove from priority queue if present
+      const queueIndex = this.connectionPriorityQueue.indexOf(oldestId);
+      if (queueIndex !== -1) {
+        this.connectionPriorityQueue.splice(queueIndex, 1);
+      }
       return true;
     }
 
@@ -356,6 +448,41 @@ export class ImapConnectionService implements OnModuleInit, OnModuleDestroy {
     }
 
     return false;
+  }
+  
+  /**
+   * Get an available connection from the pool or create a new one if needed
+   * @param config IMAP connection configuration
+   * @returns Connection ID
+   */
+  async getAvailableConnection(config: ImapConnectionConfig): Promise<string> {
+    // Check if we have an existing connection for this user/host combination
+    for (const [connectionId, status] of this.connectionStatus.entries()) {
+      if (
+        status.user === config.user &&
+        status.host === config.host &&
+        status.port === config.port &&
+        (status.state === 'connected' || status.state === 'connecting')
+      ) {
+        // Update last activity timestamp
+        this.updateConnectionStatus(connectionId, {
+          ...status,
+          lastActivity: new Date(),
+        });
+        
+        // Move to the end of the priority queue (most recently used)
+        const queueIndex = this.connectionPriorityQueue.indexOf(connectionId);
+        if (queueIndex !== -1) {
+          this.connectionPriorityQueue.splice(queueIndex, 1);
+        }
+        this.connectionPriorityQueue.push(connectionId);
+        
+        return connectionId;
+      }
+    }
+    
+    // No existing connection found, create a new one
+    return this.createConnection(config);
   }
 
   /**

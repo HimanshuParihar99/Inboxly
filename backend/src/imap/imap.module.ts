@@ -11,6 +11,9 @@ import { ConnectionSchema } from './schemas/connection.schema';
 import { ImapConnectionSchema } from './schemas/imap-connection.schema';
 import { SearchService } from './services/search.service';
 import { ImapAnalyticsService } from './services/imap-analytics.service';
+import { FolderSyncService } from './services/folder-sync.service';
+import { EmailIndex, EmailIndexSchema } from './schemas/email-index.schema';
+import { EmailAnalytics, EmailAnalyticsSchema } from './schemas/email-analytics.schema';
 
 @Module({
   imports: [
@@ -18,6 +21,8 @@ import { ImapAnalyticsService } from './services/imap-analytics.service';
       { name: 'Email', schema: EmailSchema },
       { name: 'Connection', schema: ConnectionSchema },
       { name: 'ImapConnection', schema: ImapConnectionSchema },
+      { name: EmailIndex.name, schema: EmailIndexSchema },
+      { name: EmailAnalytics.name, schema: EmailAnalyticsSchema },
     ]),
   ],
   controllers: [ImapController, ImapConnectionsController],
@@ -28,6 +33,7 @@ import { ImapAnalyticsService } from './services/imap-analytics.service';
     EmailProcessorService,
     SearchService,
     ImapAnalyticsService,
+    FolderSyncService,
   ],
   exports: [
     ImapConnectionService,
@@ -36,6 +42,7 @@ import { ImapAnalyticsService } from './services/imap-analytics.service';
     EmailProcessorService,
     SearchService,
     ImapAnalyticsService,
+    FolderSyncService,
   ],
 })
 export class ImapModule {}

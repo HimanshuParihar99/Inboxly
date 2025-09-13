@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { signIn } from 'next-auth/react';
 import GoogleSignInButton from '../GoogleSignInButton';
 
 export default function Register() {
@@ -40,6 +41,7 @@ export default function Register() {
 
     setIsLoading(true);
     try {
+      // First register the user with the backend API
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/register`, {
         method: 'POST',
         headers: {
@@ -53,22 +55,34 @@ export default function Register() {
         data = await response.json();
       } catch {
         setError('Server error: Invalid response.');
+        setIsLoading(false);
         return;
       }
 
       if (!response.ok) {
         setError(data?.message || 'Registration failed.');
+        setIsLoading(false);
         return;
       }
 
-      // Store the token in localStorage
-      localStorage.setItem('token', data.access_token);
-      localStorage.setItem('user', JSON.stringify(data.user));
+      // If registration is successful, sign in the user using NextAuth
+      const result = await signIn('credentials', {
+        redirect: false,
+        email,
+        password,
+      });
+
+      if (result?.error) {
+        setError(result.error || 'Sign in failed after registration');
+        setIsLoading(false);
+        return;
+      }
 
       // Redirect to dashboard
       router.push('/dashboard');
     } catch (err) {
       setError('Network error. Please try again later.');
+      console.error('Registration error:', err);
     } finally {
       setIsLoading(false);
     }
