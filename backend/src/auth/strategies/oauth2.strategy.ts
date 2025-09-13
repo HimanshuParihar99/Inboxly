@@ -11,24 +11,22 @@ export class OAuth2Strategy extends PassportStrategy(Strategy, 'oauth2') {
     private authService: AuthService,
   ) {
     super({
-      authorizationURL: configService.get<string>('OAUTH2_AUTH_URL'),
-      tokenURL: configService.get<string>('OAUTH2_TOKEN_URL'),
-      clientID: configService.get<string>('OAUTH2_CLIENT_ID'),
-      clientSecret: configService.get<string>('OAUTH2_CLIENT_SECRET'),
-      callbackURL: configService.get<string>('OAUTH2_CALLBACK_URL'),
+      authorizationURL: configService.get<string>('OAUTH2_AUTH_URL') || '',
+      tokenURL: configService.get<string>('OAUTH2_TOKEN_URL') || '',
+      clientID: configService.get<string>('OAUTH2_CLIENT_ID') || '',
+      clientSecret: configService.get<string>('OAUTH2_CLIENT_SECRET') || '',
+      callbackURL: configService.get<string>('OAUTH2_CALLBACK_URL') || '',
       scope: ['email', 'profile', 'https://mail.google.com/'],
     });
   }
 
   async validate(accessToken: string, refreshToken: string, profile: any) {
-    // The profile object will contain user information from the OAuth provider
     const email = profile.emails?.[0]?.value || profile.email;
-    
+
     if (!email) {
       throw new Error('Email not provided by OAuth provider');
     }
 
-    // Find or create user based on email
     const user = await this.authService.findOrCreateOAuthUser({
       email,
       name: profile.displayName || profile.name || email.split('@')[0],
