@@ -12,7 +12,7 @@ export class ImapConnectionService implements OnModuleInit, OnModuleDestroy {
   private readonly eventEmitter: EventEmitter = new EventEmitter();
 
   private readonly MAX_CONNECTIONS = 20;
-  private readonly CONNECTION_TIMEOUT = 300_000; // 5 minutes
+  private readonly CONNECTION_TIMEOUT = 300_000; // 5 min
   private readonly MAX_RECONNECT_ATTEMPTS = 5;
   private readonly RECONNECT_DELAY = 2000;
 
@@ -41,13 +41,18 @@ export class ImapConnectionService implements OnModuleInit, OnModuleDestroy {
     const connection = this.connections.get(connectionId);
     if (!connection) throw new Error(`Connection ${connectionId} not found`);
 
-    if (!connection.state || connection.state === 'disconnected') {
+    const status = this.connectionStatus.get(connectionId);
+    if (!status) throw new Error(`Connection status missing for ${connectionId}`);
+
+    // Only reconnect if disconnected
+    if (connection.state === 'disconnected') {
       this.logger.log(`Connection ${connectionId} is disconnected. Reconnecting...`);
       await this.connectWithRetry(connectionId);
     }
 
-    const status = this.connectionStatus.get(connectionId);
-    if (status) status.lastActivity = new Date();
+    status.lastActivity = new Date();
+    this.connectionPriorityQueue = this.connectionPriorityQueue.filter(id => id !== connectionId);
+    this.connectionPriorityQueue.push(connectionId);
 
     return connection;
   }
@@ -106,7 +111,7 @@ export class ImapConnectionService implements OnModuleInit, OnModuleDestroy {
   /** ------------------------- Private Methods ------------------------- */
 
   private async createConnection(config: ImapConnectionConfig): Promise<string> {
-    if (!config || !config.user || !config.password || !config.host || !config.port) {
+    if (!config.user || !config.password || !config.host || !config.port) {
       throw new Error('Invalid IMAP configuration: missing required fields');
     }
 
@@ -134,7 +139,7 @@ export class ImapConnectionService implements OnModuleInit, OnModuleDestroy {
     const connection = new IMAP(imapConfig);
 
     connection.once('ready', () => {
-      this.logger.log(`Connection ${connectionId} established to ${config.host}:${config.port}`);
+      this.logger.log(`Connection ${connectionId} ready on ${config.host}:${config.port}`);
       this.updateConnectionStatus(connectionId, {
         id: connectionId,
         host: config.host,
@@ -148,8 +153,9 @@ export class ImapConnectionService implements OnModuleInit, OnModuleDestroy {
 
     connection.once('error', (err) => {
       this.logger.error(`Connection ${connectionId} error: ${err.message}`);
+      const status = this.connectionStatus.get(connectionId);
       this.updateConnectionStatus(connectionId, {
-        ...this.connectionStatus.get(connectionId),
+        ...status,
         state: 'error',
         error: err,
         lastActivity: new Date(),
@@ -159,8 +165,9 @@ export class ImapConnectionService implements OnModuleInit, OnModuleDestroy {
 
     connection.once('end', () => {
       this.logger.log(`Connection ${connectionId} ended`);
+      const status = this.connectionStatus.get(connectionId);
       this.updateConnectionStatus(connectionId, {
-        ...this.connectionStatus.get(connectionId),
+        ...status,
         state: 'disconnected',
         lastActivity: new Date(),
       });
@@ -190,10 +197,12 @@ export class ImapConnectionService implements OnModuleInit, OnModuleDestroy {
       return new Promise<void>((resolve, reject) => {
         const readyHandler = () => {
           this.connectionPriorityQueue.push(connectionId);
+          connection.removeListener('error', errorHandler);
           resolve();
         };
 
         const errorHandler = (err: Error) => {
+          connection.removeListener('ready', readyHandler);
           if (retries < maxRetries) {
             retries++;
             const delay = this.RECONNECT_DELAY * Math.pow(1.5, retries - 1);
@@ -221,7 +230,7 @@ export class ImapConnectionService implements OnModuleInit, OnModuleDestroy {
         path: folderPath,
         delimiter: box.delimiter || delimiter,
         attribs: Array.isArray(box.attribs) ? [...box.attribs] : [],
-        children: box.children ? this.parseFolders(box.children, folderPath, box.delimiter || delimiter) : undefined,
+        children: box.children ? this.parseFolders(box.children, folderPath, box.delimiter || delimiter) : [],
       };
     });
   }
@@ -229,9 +238,8 @@ export class ImapConnectionService implements OnModuleInit, OnModuleDestroy {
   private async checkConnectionHealth(): Promise<void> {
     for (const [connectionId, status] of this.connectionStatus.entries()) {
       if (['error', 'connecting'].includes(status.state)) continue;
-
       const connection = this.connections.get(connectionId);
-      if (!connection || !connection.state || connection.state === 'disconnected') {
+      if (!connection || connection.state === 'disconnected') {
         this.logger.log(`Reconnecting disconnected connection ${connectionId}`);
         await this.connectWithRetry(connectionId).catch(err =>
           this.logger.error(`Failed to reconnect ${connectionId}: ${err.message}`)

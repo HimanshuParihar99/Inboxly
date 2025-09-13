@@ -11,10 +11,7 @@ export class FolderSyncService {
 
   constructor(private readonly imapConnectionService: ImapConnectionService) {}
 
-  async syncFolders(
-    sourceConnectionId: string,
-    destConnectionId: string,
-  ): Promise<void> {
+  async syncFolders(sourceConnectionId: string, destConnectionId: string): Promise<void> {
     const syncKey = `${sourceConnectionId}-${destConnectionId}`;
 
     if (this.syncInProgress.get(syncKey)) {
@@ -27,14 +24,11 @@ export class FolderSyncService {
       return;
     }
 
-    try {
-      this.syncInProgress.set(syncKey, true);
+    this.syncInProgress.set(syncKey, true);
 
-      // ✅ Awaited connections are IMAP.Connection
-      const sourceConnection: IMAP.Connection =
-        await this.imapConnectionService.getConnection(sourceConnectionId);
-      const destConnection: IMAP.Connection =
-        await this.imapConnectionService.getConnection(destConnectionId);
+    try {
+      const sourceConnection: IMAP.Connection = await this.imapConnectionService.getConnection(sourceConnectionId);
+      const destConnection: IMAP.Connection = await this.imapConnectionService.getConnection(destConnectionId);
 
       const sourceFolders = await this.getFolders(sourceConnection);
       const destFolders = await this.getFolders(destConnection);
@@ -46,7 +40,6 @@ export class FolderSyncService {
           this.logger.log(`Sync paused during operation for ${syncKey}`);
           break;
         }
-
         await this.syncFolderMessages(sourceConnection, destConnection, folder.path);
       }
 
@@ -78,10 +71,7 @@ export class FolderSyncService {
   private getFolders(connection: IMAP.Connection): Promise<ImapFolder[]> {
     return new Promise((resolve, reject) => {
       connection.getBoxes((err, boxes) => {
-        if (err) {
-          reject(err);
-          return;
-        }
+        if (err) return reject(err);
 
         const folders: ImapFolder[] = [];
         this.parseFolderHierarchy(boxes, '', folders);
@@ -101,10 +91,8 @@ export class FolderSyncService {
         const box = boxes[name];
         const path = parentPath ? `${parentPath}${delimiter}${name}` : name;
 
-        const sanitizedName = this.sanitizeFolderName(name);
-
         folders.push({
-          name: sanitizedName,
+          name: this.sanitizeFolderName(name),
           path,
           delimiter,
           attribs: box.attribs,
@@ -119,15 +107,25 @@ export class FolderSyncService {
   }
 
   private sanitizeFolderName(name: string): string {
-    return name
-      .replace(/\//g, '-')
-      .replace(/\\/g, '-')
-      .replace(/\*/g, '_')
-      .replace(/\?/g, '_')
-      .replace(/"/g, "'")
-      .replace(/</g, '(')
-      .replace(/>/g, ')')
-      .replace(/\|/g, '_');
+    return name.replace(/[\/\\*?"<>|]/g, (c) => {
+      switch (c) {
+        case '/':
+        case '\\':
+          return '-';
+        case '*':
+        case '?':
+        case '|':
+          return '_';
+        case '"':
+          return "'";
+        case '<':
+          return '(';
+        case '>':
+          return ')';
+        default:
+          return c;
+      }
+    });
   }
 
   private async createMissingFolders(
@@ -135,10 +133,8 @@ export class FolderSyncService {
     sourceFolders: ImapFolder[],
     destFolders: ImapFolder[],
   ): Promise<void> {
-    const destFolderPaths = destFolders.map((folder) => folder.path);
-    const sortedSourceFolders = [...sourceFolders].sort(
-      (a, b) => a.path.length - b.path.length,
-    );
+    const destFolderPaths = destFolders.map((f) => f.path);
+    const sortedSourceFolders = [...sourceFolders].sort((a, b) => a.path.length - b.path.length);
 
     for (const folder of sortedSourceFolders) {
       if (!destFolderPaths.includes(folder.path)) {
@@ -146,10 +142,7 @@ export class FolderSyncService {
           await this.createFolder(destConnection, folder.path);
           this.logger.log(`Created folder: ${folder.path}`);
         } catch (error: any) {
-          this.logger.error(
-            `Error creating folder ${folder.path}: ${error.message}`,
-            error.stack,
-          );
+          this.logger.error(`Error creating folder ${folder.path}: ${error.message}`, error.stack);
         }
       }
     }
@@ -157,13 +150,7 @@ export class FolderSyncService {
 
   private createFolder(connection: IMAP.Connection, path: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      connection.addBox(path, (err) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        resolve();
-      });
+      connection.addBox(path, (err) => (err ? reject(err) : resolve()));
     });
   }
 
@@ -176,9 +163,7 @@ export class FolderSyncService {
       const sourceBox = await this.openFolder(sourceConnection, folderPath);
       await this.openFolder(destConnection, folderPath);
 
-      if (sourceBox.messages.total === 0) {
-        return;
-      }
+      if (sourceBox.messages.total === 0) return;
 
       const messages = await this.fetchMessages(sourceConnection, '1:*', {
         bodies: 'HEADER',
@@ -191,35 +176,18 @@ export class FolderSyncService {
         await this.copyMessageWithFlags(sourceConnection, destConnection, message, folderPath);
       }
     } catch (error: any) {
-      this.logger.error(
-        `Error syncing folder ${folderPath}: ${error.message}`,
-        error.stack,
-      );
+      this.logger.error(`Error syncing folder ${folderPath}: ${error.message}`, error.stack);
       throw error;
     }
   }
 
-  private openFolder(
-    connection: IMAP.Connection,
-    path: string,
-    readOnly = false,
-  ): Promise<IMAP.Box> {
+  private openFolder(connection: IMAP.Connection, path: string, readOnly = false): Promise<IMAP.Box> {
     return new Promise((resolve, reject) => {
-      connection.openBox(path, readOnly, (err, box) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        resolve(box);
-      });
+      connection.openBox(path, readOnly, (err, box) => (err ? reject(err) : resolve(box)));
     });
   }
 
-  private fetchMessages(
-    connection: IMAP.Connection,
-    source: string,
-    options: IMAP.FetchOptions,
-  ): Promise<any[]> {
+  private fetchMessages(connection: IMAP.Connection, source: string, options: IMAP.FetchOptions): Promise<any[]> {
     return new Promise((resolve, reject) => {
       const messages: any[] = [];
       const fetch = connection.fetch(source, options);
@@ -229,24 +197,14 @@ export class FolderSyncService {
 
         msg.on('body', (stream, info) => {
           let buffer = '';
-          stream.on('data', (chunk) => {
-            buffer += chunk.toString('utf8');
-          });
-
+          stream.on('data', (chunk) => (buffer += chunk.toString('utf8')));
           stream.on('end', () => {
-            if (info.which === 'HEADER') {
-              message.headers = buffer;
-            }
+            if (info.which === 'HEADER') message.headers = buffer;
           });
         });
 
-        msg.once('attributes', (attrs) => {
-          message.attributes = attrs;
-        });
-
-        msg.once('end', () => {
-          messages.push(message);
-        });
+        msg.once('attributes', (attrs) => (message.attributes = attrs));
+        msg.once('end', () => messages.push(message));
       });
 
       fetch.once('error', (err) => reject(err));
@@ -261,27 +219,15 @@ export class FolderSyncService {
     folderPath: string,
   ): Promise<void> {
     try {
-      const existingMessages = await this.fetchMessages(destConnection, '1:*', {
-        bodies: 'HEADER',
-      });
+      const existingMessages = await this.fetchMessages(destConnection, '1:*', { bodies: 'HEADER' });
 
-      const messageExists = existingMessages.some(
-        (existingMsg) => existingMsg.headers === message.headers,
-      );
-
-      if (messageExists) {
+      const exists = existingMessages.some((msg) => msg.headers === message.headers);
+      if (exists) {
         this.logger.debug(`Message already exists in destination folder ${folderPath}`);
         return;
       }
 
-      await this.appendMessage(
-        destConnection,
-        folderPath,
-        message.headers,
-        message.attributes.flags,
-        message.attributes.date,
-      );
-
+      await this.appendMessage(destConnection, folderPath, message.headers, message.attributes.flags, message.attributes.date);
       this.logger.debug(`Message copied to destination folder ${folderPath}`);
     } catch (error: any) {
       this.logger.error(`Error copying message: ${error.message}`, error.stack);
@@ -289,30 +235,14 @@ export class FolderSyncService {
     }
   }
 
-  private appendMessage(
-    connection: IMAP.Connection,
-    path: string,
-    content: string,
-    flags: string[],
-    date: Date,
-  ): Promise<void> {
+  private appendMessage(connection: IMAP.Connection, path: string, content: string, flags: string[], date: Date): Promise<void> {
     return new Promise((resolve, reject) => {
-      connection.append(
-        content,
-        { mailbox: path, flags, date },
-        (err) => (err ? reject(err) : resolve()),
-      );
+      connection.append(content, { mailbox: path, flags, date }, (err) => (err ? reject(err) : resolve()));
     });
   }
 
-  getSyncStatus(sourceConnectionId: string, destConnectionId: string): {
-    inProgress: boolean;
-    paused: boolean;
-  } {
+  getSyncStatus(sourceConnectionId: string, destConnectionId: string): { inProgress: boolean; paused: boolean } {
     const syncKey = `${sourceConnectionId}-${destConnectionId}`;
-    return {
-      inProgress: this.syncInProgress.get(syncKey) || false,
-      paused: this.pausedSyncs.get(syncKey) || false,
-    };
+    return { inProgress: this.syncInProgress.get(syncKey) || false, paused: this.pausedSyncs.get(syncKey) || false };
   }
 }
