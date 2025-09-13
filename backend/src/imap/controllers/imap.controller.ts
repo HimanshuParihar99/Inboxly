@@ -1,11 +1,9 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   Param,
   Post,
-  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -13,9 +11,7 @@ import { ImapConnectionService } from '../services/imap-connection.service';
 import { ImapSyncService } from '../services/imap-sync.service';
 import { EmailProcessorService } from '../services/email-processor.service';
 import { SearchService } from '../services/search.service';
-import type {
-  ImapConnectionConfig,
-} from '../interfaces/imap-connection.interface';
+import type { ImapConnectionConfig } from '../interfaces/imap-connection.interface';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -32,20 +28,20 @@ export class ImapController {
     private readonly searchService: SearchService,
     @InjectModel('Connection')
     private readonly connectionModel: Model<Connection>,
-    @InjectModel('Email') private readonly emailModel: Model<Email>,
+    @InjectModel('Email')
+    private readonly emailModel: Model<Email>,
   ) {}
 
   @Post('test-connection')
   async testConnection(@Body() connectionConfig: ImapConnectionConfig) {
     try {
-      // Use public method to connect
-      const connectionId = await this.imapConnectionService.connect(
+      const connectionId = await this.imapConnectionService.createConnection(
         connectionConfig,
       );
       await this.imapConnectionService.closeConnection(connectionId);
 
       return { success: true, message: 'Connection test successful' };
-    } catch (error) {
+    } catch (error: any) {
       return { success: false, error: error.message };
     }
   }
@@ -63,7 +59,7 @@ export class ImapController {
     try {
       const folders = await this.imapConnectionService.getFolders(connectionId);
       return { success: true, folders };
-    } catch (error) {
+    } catch (error: any) {
       return { success: false, error: error.message };
     }
   }
@@ -96,7 +92,7 @@ export class ImapController {
         limit: limit ? parseInt(limit.toString()) : 20,
         skip: skip ? parseInt(skip.toString()) : 0,
       };
-    } catch (error) {
+    } catch (error: any) {
       return { success: false, error: error.message };
     }
   }
@@ -124,31 +120,26 @@ export class ImapController {
       ]);
 
       return { success: true, analytics: analytics[0] || { totalEmails: 0 } };
-    } catch (error) {
+    } catch (error: any) {
       return { success: false, error: error.message };
     }
   }
 
-  // Example of folder listing using fixed public methods
   @Get('connections/:id/folders/list')
   async listConnectionFolders(@Param('id') id: string) {
     try {
       const connection = await this.connectionModel.findById(id).exec();
       if (!connection) return { success: false, error: 'Connection not found' };
 
-      const connectionId = await this.imapConnectionService.connect(
+      const connectionId = await this.imapConnectionService.createConnection(
         connection.config,
       );
       const folders = await this.imapConnectionService.getFolders(connectionId);
       await this.imapConnectionService.closeConnection(connectionId);
 
       return { success: true, folders };
-    } catch (error) {
+    } catch (error: any) {
       return { success: false, error: error.message };
     }
   }
-
-  // All other endpoints (sync, search, emails by ID, etc.) should call
-  // public methods like imapConnectionService.connect and imapConnectionService.getFolders
-  // instead of private methods.
 }

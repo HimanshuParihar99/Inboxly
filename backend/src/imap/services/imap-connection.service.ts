@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import IMAP = require('imap');
+import * as IMAP from 'imap';
 import { ImapConnectionConfig, ImapConnectionStatus, ImapFolder } from '../interfaces/imap-connection.interface';
 import { EventEmitter } from 'events';
 import { v4 as uuidv4 } from 'uuid';
@@ -7,7 +7,8 @@ import { v4 as uuidv4 } from 'uuid';
 @Injectable()
 export class ImapConnectionService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ImapConnectionService.name);
-  private connections: Map<string, IMAP> = new Map();
+
+  private connections: Map<string, IMAP.Connection> = new Map();
   private connectionStatus: Map<string, ImapConnectionStatus> = new Map();
   private readonly eventEmitter: EventEmitter = new EventEmitter();
 
@@ -37,14 +38,13 @@ export class ImapConnectionService implements OnModuleInit, OnModuleDestroy {
     return this.connections.size;
   }
 
-  async getConnection(connectionId: string): Promise<IMAP> {
+  async getConnection(connectionId: string): Promise<IMAP.Connection> {
     const connection = this.connections.get(connectionId);
     if (!connection) throw new Error(`Connection ${connectionId} not found`);
 
     const status = this.connectionStatus.get(connectionId);
     if (!status) throw new Error(`Connection status missing for ${connectionId}`);
 
-    // Only reconnect if disconnected
     if (connection.state === 'disconnected') {
       this.logger.log(`Connection ${connectionId} is disconnected. Reconnecting...`);
       await this.connectWithRetry(connectionId);
@@ -80,7 +80,7 @@ export class ImapConnectionService implements OnModuleInit, OnModuleDestroy {
     return new Promise<ImapFolder[]>((resolve, reject) => {
       connection.getBoxes((err, boxes) => {
         if (err) return reject(err);
-        resolve(this.parseFolders(boxes, '', connection.delimiter));
+        resolve(this.parseFolders(boxes, '', connection.delimiter || '/'));
       });
     });
   }
@@ -108,9 +108,9 @@ export class ImapConnectionService implements OnModuleInit, OnModuleDestroy {
     return Array.from(this.connectionStatus.values());
   }
 
-  /** ------------------------- Private Methods ------------------------- */
+  /** ------------------------- Public (formerly private) ------------------------- */
 
-  private async createConnection(config: ImapConnectionConfig): Promise<string> {
+  public async createConnection(config: ImapConnectionConfig): Promise<string> {
     if (!config.user || !config.password || !config.host || !config.port) {
       throw new Error('Invalid IMAP configuration: missing required fields');
     }
@@ -153,9 +153,11 @@ export class ImapConnectionService implements OnModuleInit, OnModuleDestroy {
 
     connection.once('error', (err) => {
       this.logger.error(`Connection ${connectionId} error: ${err.message}`);
-      const status = this.connectionStatus.get(connectionId);
       this.updateConnectionStatus(connectionId, {
-        ...status,
+        id: connectionId,
+        host: config.host,
+        port: config.port,
+        user: config.user,
         state: 'error',
         error: err,
         lastActivity: new Date(),
@@ -165,9 +167,11 @@ export class ImapConnectionService implements OnModuleInit, OnModuleDestroy {
 
     connection.once('end', () => {
       this.logger.log(`Connection ${connectionId} ended`);
-      const status = this.connectionStatus.get(connectionId);
       this.updateConnectionStatus(connectionId, {
-        ...status,
+        id: connectionId,
+        host: config.host,
+        port: config.port,
+        user: config.user,
         state: 'disconnected',
         lastActivity: new Date(),
       });
@@ -186,6 +190,8 @@ export class ImapConnectionService implements OnModuleInit, OnModuleDestroy {
     await this.connectWithRetry(connectionId);
     return connectionId;
   }
+
+  /** ------------------------- Private Helpers ------------------------- */
 
   private async connectWithRetry(connectionId: string, maxRetries = this.MAX_RECONNECT_ATTEMPTS): Promise<void> {
     const connection = this.connections.get(connectionId);
